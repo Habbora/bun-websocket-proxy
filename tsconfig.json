@@ -2,7 +2,10 @@
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
-    "lib": ["ESNext", "DOM"],
+    "lib": [
+      "ESNext",
+      "DOM"
+    ],
     "declaration": true,
     "emitDeclarationOnly": true,
     "outDir": "dist",
@@ -11,10 +14,6 @@
     "skipLibCheck": true
   },
   "include": [
-    "src/websocket/index.ts",
-    "src/websocket/websocket.client.ts",
-    "src/websocket/websocket.server.ts",
-    "src/websocket/websocket.proxy.ts",
-    "src/websocket/websocket.d.ts"
+    "src/**/*.ts"
   ]
 }

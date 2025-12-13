@@ -1,2 +1,199 @@
 // @bun
-import{EventEmitter as p}from"events";class b extends p{url;protocols;ws=null;isConnected=!1;constructor(e,s){super();this.url=e;this.protocols=s;this.connect()}connect(){try{this.ws=new WebSocket(this.url,this.protocols),this.ws.onopen=()=>{this.isConnected=!0,this.emit("open")},this.ws.onerror=(e)=>{this.isConnected=!1,this.emit("error",e)},this.ws.onclose=()=>{this.isConnected=!1,this.emit("close")},this.ws.onmessage=(e)=>{this.emit("message",e.data)}}catch(e){this.emit("error",e)}}send(e){if(this.ws?.readyState===WebSocket.OPEN)this.ws.send(e)}close(){if(this.ws)this.ws.close(),this.ws=null;this.isConnected=!1}get connected(){return this.isConnected}}import{EventEmitter as B}from"events";class d extends B{clients=new Map;constructor(e){super();Bun.serve({hostname:e.hostname,port:e.port,fetch:async(s,n)=>{if(this.emit("fetch",s),s.headers.get("upgrade")==="websocket"){let i=Bun.randomUUIDv7(),o=s.url,t=s.headers.get("sec-websocket-protocol")||void 0,h=s.headers.get("authorization")||void 0,l=s.headers.get("user-agent")||void 0;n.upgrade(s,{data:{sessionId:i,route:o,protocol:t,authorization:h,userAgent:l}}),this.emit("upgrade",{sessionId:i,route:o,protocol:t,authorization:h,userAgent:l})}},websocket:{open:(s)=>{let n=s.data;this.clients.set(n.sessionId,s),this.emit("open",n)},message:(s,n)=>{let i=s.data;this.emit("message",i,n)},close:(s)=>{let{sessionId:n}=s.data;this.clients.delete(n),this.emit("close",n)}}})}connect(e){}send(e,s){this.clients.get(e)?.send(s)}close(e){this.clients.get(e)?.close()}}import{EventEmitter as C}from"events";class f extends C{props;server;routes=new Map;clients=new Map;proxies=new Map;constructor(e){super();this.props=e;this.server=new d({hostname:this.props.hostname,port:this.props.port}),this.server.on("upgrade",(s)=>{this.onUpgrade(s)}),this.server.on("message",(s,n)=>{this.onMessage(s,n)})}static matchRouter=({route:e,input:s,target:n})=>{try{let i=new URL(e,"http://localhost"),o=new URL(s),t=new URL(n),[h]=[i.pathname,i.search],[l,m]=[o.pathname,o.search],[u]=[t.pathname,t.search],v=h.split("/").filter(Boolean),r=l.split("/").filter(Boolean),W=u.split("/").filter(Boolean);if(r.length!==v.length)return{match:!1};if(!v.every((c,S)=>c===r[S]||c.startsWith(":")))return{match:!1};let w={};v.forEach((c,S)=>{if(c.startsWith(":"))w[c]=r[S]});let k=W.map((c)=>w[c]||c);return{match:!0,output:t.origin+"/"+k.join("/")+m}}catch(i){return console.error(i),{match:!1}}};async createClientProxy({sessionId:e,href:s,protocol:n}){let i=new b(s,n);i.on("open",()=>{this.server.connect(e)}),i.on("close",()=>{this.server.close(e)}),i.on("message",(o)=>{this.server.send(e,o)}),this.clients.set(e,i)}async onUpgrade(e){Array.from(this.routes.keys()).forEach((n)=>{let i=this.routes.get(e.route);if(!i)return;let o=f.matchRouter({route:n,input:e.route,target:i});if(o.output)this.createClientProxy({sessionId:e.sessionId,href:o.output,protocol:e.protocol})})}async onMessage(e,s){this.clients.get(e.sessionId)?.send(s),this.proxies.get(e.sessionId)?.send(s)}route(e,s){return this.routes.set(e,s),this}}export{d as WebsocketServer,f as WebsocketProxy,b as WebsocketClient};
+// src/websocket/websocket.client.ts
+import { EventEmitter } from "events";
+
+class WebsocketClient extends EventEmitter {
+  url;
+  protocols;
+  ws = null;
+  isConnected = false;
+  constructor(url, protocols) {
+    super();
+    this.url = url;
+    this.protocols = protocols;
+    this.connect();
+  }
+  connect() {
+    try {
+      this.ws = new WebSocket(this.url, this.protocols);
+      this.ws.onopen = () => {
+        this.isConnected = true;
+        this.emit("open");
+      };
+      this.ws.onerror = (event) => {
+        this.isConnected = false;
+        this.emit("error", event);
+      };
+      this.ws.onclose = () => {
+        this.isConnected = false;
+        this.emit("close");
+      };
+      this.ws.onmessage = (event) => {
+        this.emit("message", event.data);
+      };
+    } catch (error) {
+      this.emit("error", error);
+    }
+  }
+  send(message) {
+    if (this.ws?.readyState === WebSocket.OPEN)
+      this.ws.send(message);
+  }
+  close() {
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    this.isConnected = false;
+  }
+  get connected() {
+    return this.isConnected;
+  }
+}
+// src/websocket/websocket.server.ts
+import { EventEmitter as EventEmitter2 } from "events";
+
+class WebsocketServer extends EventEmitter2 {
+  clients = new Map;
+  constructor(props) {
+    super();
+    Bun.serve({
+      hostname: props.hostname,
+      port: props.port,
+      fetch: async (req, server) => {
+        this.emit("fetch", req);
+        if (req.headers.get("upgrade") === "websocket") {
+          const sessionId = Bun.randomUUIDv7();
+          const route = req.url;
+          const protocol = req.headers.get("sec-websocket-protocol") || undefined;
+          const authorization = req.headers.get("authorization") || undefined;
+          const userAgent = req.headers.get("user-agent") || undefined;
+          server.upgrade(req, {
+            data: { sessionId, route, protocol, authorization, userAgent }
+          });
+          this.emit("upgrade", { sessionId, route, protocol, authorization, userAgent });
+        }
+      },
+      websocket: {
+        open: (ws) => {
+          const data = ws.data;
+          this.clients.set(data.sessionId, ws);
+          this.emit("open", data);
+        },
+        message: (ws, message) => {
+          const data = ws.data;
+          this.emit("message", data, message);
+        },
+        close: (ws) => {
+          const { sessionId } = ws.data;
+          this.clients.delete(sessionId);
+          this.emit("close", sessionId);
+        }
+      }
+    });
+  }
+  connect(sessionId) {}
+  send(sessionId, message) {
+    this.clients.get(sessionId)?.send(message);
+  }
+  close(sessionId) {
+    this.clients.get(sessionId)?.close();
+  }
+}
+// src/websocket/websocket.proxy.ts
+import { EventEmitter as EventEmitter3 } from "events";
+class WebsocketProxy extends EventEmitter3 {
+  props;
+  server;
+  routes = new Map;
+  clients = new Map;
+  proxies = new Map;
+  constructor(props) {
+    super();
+    this.props = props;
+    this.server = new WebsocketServer({
+      hostname: this.props.hostname,
+      port: this.props.port
+    });
+    this.server.on("upgrade", (data) => {
+      this.onUpgrade(data);
+    });
+    this.server.on("message", (data, message) => {
+      this.onMessage(data, message);
+    });
+  }
+  static matchRouter = ({ route, input, target }) => {
+    try {
+      const routeUrl = new URL(route, "http://localhost");
+      const inputUrl = new URL(input);
+      const targetUrl = new URL(target);
+      const [routePath] = [routeUrl.pathname, routeUrl.search];
+      const [inputPath, inputSearch] = [inputUrl.pathname, inputUrl.search];
+      const [targetPath] = [targetUrl.pathname, targetUrl.search];
+      const routeParts = routePath.split("/").filter(Boolean);
+      const pathParts = inputPath.split("/").filter(Boolean);
+      const targetParts = targetPath.split("/").filter(Boolean);
+      if (pathParts.length !== routeParts.length)
+        return { match: false };
+      const isMatch = routeParts.every((part, index) => part === pathParts[index] || part.startsWith(":"));
+      if (!isMatch)
+        return { match: false };
+      const params = {};
+      routeParts.forEach((part, index) => {
+        if (part.startsWith(":"))
+          params[part] = pathParts[index];
+      });
+      const targetParams = targetParts.map((part) => params[part] || part);
+      const output = targetUrl.origin + "/" + targetParams.join("/") + inputSearch;
+      return { match: true, output };
+    } catch (err) {
+      console.error(err);
+      return { match: false };
+    }
+  };
+  async createClientProxy({ sessionId, href, protocol }) {
+    const clientTarget = new WebsocketClient(href, protocol);
+    clientTarget.on("open", () => {
+      this.server.connect(sessionId);
+    });
+    clientTarget.on("close", () => {
+      this.server.close(sessionId);
+    });
+    clientTarget.on("message", (data) => {
+      this.server.send(sessionId, data);
+    });
+    this.clients.set(sessionId, clientTarget);
+  }
+  async onUpgrade(data) {
+    const routesKeys = Array.from(this.routes.keys());
+    routesKeys.forEach((route) => {
+      const target = this.routes.get(data.route);
+      if (!target)
+        return;
+      const match = WebsocketProxy.matchRouter({
+        route,
+        input: data.route,
+        target
+      });
+      if (match.output)
+        this.createClientProxy({
+          sessionId: data.sessionId,
+          href: match.output,
+          protocol: data.protocol
+        });
+    });
+  }
+  async onMessage(data, message) {
+    this.clients.get(data.sessionId)?.send(message);
+    this.proxies.get(data.sessionId)?.send(message);
+  }
+  route(route, target) {
+    this.routes.set(route, target);
+    return this;
+  }
+}
+export {
+  WebsocketServer,
+  WebsocketProxy,
+  WebsocketClient
+};
