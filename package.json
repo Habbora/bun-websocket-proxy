@@ -1,5 +1,5 @@
 {
-  "name": "@habbora/bun-websocket-proxy",
+  "name": "bun-websocket-proxy",
   "version": "0.1.0",
   "type": "module",
   "types": "./dist/index.d.ts",
