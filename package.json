@@ -1,0 +1,32 @@
+{
+  "name": "websocket-proxy",
+  "version": "0.1.0",
+  "type": "module",
+  "private": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "engines": { "bun": ">=1.3.0" },
+  "publishConfig": { "access": "public" },
+  "devDependencies": {
+    "@types/bun": "^1.3.0",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run dist/index.js",
+    "build": "bun run build:lib && bun run build:types",
+    "build:lib": "bun build src/index.ts --outdir dist --target bun --minify",
+    "build:types": "tsc -p tsconfig.json --emitDeclarationOnly",
+    "build:clean": "rm -rf dist && bun run build",
+    "test": "bun test"
+  }
+}
