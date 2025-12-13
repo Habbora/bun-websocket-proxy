@@ -27,6 +27,7 @@
     "build:lib": "bun build src/index.ts --outdir dist --target bun --minify",
     "build:types": "tsc -p tsconfig.json --emitDeclarationOnly",
     "build:clean": "rm -rf dist && bun run build",
+    "prepare": "bun run build:lib && bun run build:types",
     "test": "bun test"
   }
 }
