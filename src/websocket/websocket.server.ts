@@ -12,24 +12,21 @@ export class WebsocketServer extends EventEmitter {
     constructor(props: WebSocketServerProps) {
         super()
 
+        console.log('WebsocketServer', props)
+
         Bun.serve({
             hostname: props.hostname,
             port: props.port,
             fetch: async (req, server) => {
                 this.emit('fetch', req)
-
                 if (req.headers.get('upgrade') === 'websocket') {
                     const sessionId = Bun.randomUUIDv7()
                     const route = req.url
                     const protocol = req.headers.get('sec-websocket-protocol') || undefined
                     const authorization = req.headers.get('authorization') || undefined
                     const userAgent = req.headers.get('user-agent') || undefined
-
-                    server.upgrade(req, {
-                        data: { sessionId, route, protocol, authorization, userAgent }
-                    })
-
                     this.emit('upgrade', { sessionId, route, protocol, authorization, userAgent })
+                    server.upgrade(req, { data: { sessionId, route, protocol, authorization, userAgent } })
                 }
             },
             websocket: {
@@ -45,14 +42,14 @@ export class WebsocketServer extends EventEmitter {
                 close: (ws: Bun.ServerWebSocket<WsServerData>) => {
                     const { sessionId } = ws.data;
                     this.clients.delete(sessionId);
-                    this.emit('close', sessionId);
+                    this.emit('close', ws.data);
                 },
             },
         });
     }
 
     connect(sessionId: string) {
-        
+
     }
 
     send(sessionId: string, message: string) {

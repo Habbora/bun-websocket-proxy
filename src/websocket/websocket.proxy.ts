@@ -9,7 +9,7 @@ export type WebsocketProxyProps = {
 
 export class WebsocketProxy extends EventEmitter {
     private server: WebsocketServer
-    private routes = new Map<string, string>()
+    private targets = new Map<string, string>()
     private clients = new Map<string, WebsocketClient>()
     private proxies = new Map<string, WebsocketClient>()
 
@@ -19,6 +19,14 @@ export class WebsocketProxy extends EventEmitter {
         this.server = new WebsocketServer({
             hostname: this.props.hostname,
             port: this.props.port
+        })
+
+        this.server.on('open', (data: WsServerData) => {
+            console.log('server open', data)
+        })
+
+        this.server.on('close', (data: WsServerData) => {
+            console.log('server close', data)
         })
 
         this.server.on('upgrade', (data: WsServerData) => {
@@ -100,25 +108,22 @@ export class WebsocketProxy extends EventEmitter {
     }
 
     private async onUpgrade(data: WsServerData) {
-        const routesKeys = Array.from(this.routes.keys())
-        routesKeys.forEach((route) => {
-            const target = this.routes.get(data.route)
-
-            if (!target) return
-
-            const match = WebsocketProxy.matchRouter({
-                route,
-                input: data.route,
-                target: target,
-            })
-
-            if (match.output)
-                this.createClientProxy({
-                    sessionId: data.sessionId,
-                    href: match.output,
-                    protocol: data.protocol
-                })
+        const target = Array.from(this.targets.keys()).find((route) => {
+            const routeUrl = new URL(route, 'http://localhost')
+            const inputUrl = new URL(data.route)
+            const routeParts = routeUrl.pathname!.split('/').filter(Boolean)
+            const pathParts = inputUrl.pathname!.split('/').filter(Boolean)
+            if (pathParts.length !== routeParts.length) return
+            if (routeParts.every((part, index) => part === pathParts[index] || part.startsWith(':'))) return true
         })
+        console.log('target', target)
+        if (!target) return
+
+        const { match, output } = WebsocketProxy.matchRouter({ route: target, input: data.route, target: this.targets.get(target)! })
+        if (!match) return
+
+        console.log('output', output)
+        this.createClientProxy({ sessionId: data.sessionId, href: output!, protocol: data.protocol })
     }
 
     private async onMessage(data: WsServerData, message: string) {
@@ -133,7 +138,7 @@ export class WebsocketProxy extends EventEmitter {
      * @returns         WebsocketProxy
      */
     public route(route: string, target: string): this {
-        this.routes.set(route, target)
+        this.targets.set(route, target)
         return this
     }
 }

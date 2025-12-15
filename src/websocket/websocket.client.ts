@@ -23,7 +23,7 @@ export class WebsocketClient extends EventEmitter {
 
       this.ws.onerror = (event) => {
         this.isConnected = false;
-        this.emit("error", event);
+        //this.emit("error", event);
       };
 
       this.ws.onclose = () => {
@@ -35,7 +35,7 @@ export class WebsocketClient extends EventEmitter {
         this.emit("message", event.data);
       };
     } catch (error) {
-      this.emit("error", error);
+      //this.emit("error", error);
     }
   }
 
