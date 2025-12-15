@@ -22,11 +22,15 @@ export class WebsocketProxy extends EventEmitter {
         })
 
         this.server.on('open', (data: WsServerData) => {
-            console.log('server open', data)
+            //console.log('server open', data)
         })
 
         this.server.on('close', (data: WsServerData) => {
-            console.log('server close', data)
+            //console.log('server close', data)
+        })
+
+        this.server.on('message', (data: WsServerData, message: string) => {
+            this.emit('server message', data, message)
         })
 
         this.server.on('upgrade', (data: WsServerData) => {
@@ -100,8 +104,9 @@ export class WebsocketProxy extends EventEmitter {
             this.server.close(sessionId)
         })
 
-        clientTarget.on('message', (data: string) => {
-            this.server.send(sessionId, data)
+        clientTarget.on('message', (event: any) => {
+            this.server.send(sessionId, event.data)
+            this.emit('client message', sessionId, event.data)
         })
 
         this.clients.set(sessionId, clientTarget)
@@ -116,13 +121,13 @@ export class WebsocketProxy extends EventEmitter {
             if (pathParts.length !== routeParts.length) return
             if (routeParts.every((part, index) => part === pathParts[index] || part.startsWith(':'))) return true
         })
-        console.log('target', target)
+        //console.log('target', target)
         if (!target) return
 
         const { match, output } = WebsocketProxy.matchRouter({ route: target, input: data.route, target: this.targets.get(target)! })
         if (!match) return
 
-        console.log('output', output)
+        //console.log('output', output)
         this.createClientProxy({ sessionId: data.sessionId, href: output!, protocol: data.protocol })
     }
 

@@ -12,7 +12,7 @@ export class WebsocketServer extends EventEmitter {
     constructor(props: WebSocketServerProps) {
         super()
 
-        console.log('WebsocketServer', props)
+        //console.log('WebsocketServer', props)
 
         Bun.serve({
             hostname: props.hostname,

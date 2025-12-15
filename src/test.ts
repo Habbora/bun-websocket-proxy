@@ -25,6 +25,16 @@ proxy.on('upgrade', (data) => {
     console.log('upgrade', data)
 })
 
+proxy.on('server message', (data, message) => {
+    console.log('server message', data, message)
+})
+
+proxy.on('client message', (sessionId, message) => {
+    console.log('client message', sessionId, message)
+})
+
+
+
 setTimeout(() => {
     const client1 = new WebsocketClient('ws://localhost:8082/ocpp/123')
     client1.on('message', (data) => {

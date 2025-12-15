@@ -32,7 +32,7 @@ export class WebsocketClient extends EventEmitter {
       };
 
       this.ws.onmessage = (event) => {
-        this.emit("message", event.data);
+        this.emit("message", event)
       };
     } catch (error) {
       //this.emit("error", error);
