@@ -18,7 +18,7 @@ export class WebsocketServer extends EventEmitter {
             hostname: props.hostname,
             port: props.port,
             fetch: async (req, server) => {
-                this.emit('fetch', req)
+                this.emit('request', req)
                 if (req.headers.get('upgrade') === 'websocket') {
                     const sessionId = Bun.randomUUIDv7()
                     const route = req.url

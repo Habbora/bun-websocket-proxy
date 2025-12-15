@@ -19,25 +19,19 @@ export class WebsocketProxy extends EventEmitter {
         this.server = new WebsocketServer({
             hostname: this.props.hostname,
             port: this.props.port
-        }) 
-
-        this.server.on('server open', (data: WsServerData) => {
-            this.emit('open', data)
         })
 
-        this.server.on('server close', (data: WsServerData) => {
-            this.emit('close', data)
-        })
-
-        this.server.on('message', (data: WsServerData, message: string) => {
-            this.emit('server message', data, message)
+        this.server.on('request', (req: Request) => {
+            this.emit('server:request', req)
         })
 
         this.server.on('upgrade', (data: WsServerData) => {
+            this.emit('server:upgrade', data)
             this.onUpgrade(data)
         })
 
         this.server.on("message", (data: WsServerData, message: string) => {
+            this.emit('server:message', data, message)
             this.onMessage(data, message)
         })
     }
@@ -97,16 +91,18 @@ export class WebsocketProxy extends EventEmitter {
         const clientTarget = new WebsocketClient(href, protocol)
 
         clientTarget.on('open', () => {
+            this.emit('client:open', sessionId)
             this.server.connect(sessionId)
         })
 
         clientTarget.on('close', () => {
+            this.emit('client:close', sessionId)
             this.server.close(sessionId)
         })
 
         clientTarget.on('message', (event: any) => {
+            this.emit('client:message', sessionId, event.data)
             this.server.send(sessionId, event.data)
-            this.emit('client message', sessionId, event.data)
         })
 
         this.emit('client open', clientTarget)
