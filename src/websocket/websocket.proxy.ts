@@ -19,14 +19,14 @@ export class WebsocketProxy extends EventEmitter {
         this.server = new WebsocketServer({
             hostname: this.props.hostname,
             port: this.props.port
+        }) 
+
+        this.server.on('server open', (data: WsServerData) => {
+            this.emit('open', data)
         })
 
-        this.server.on('open', (data: WsServerData) => {
-            //console.log('server open', data)
-        })
-
-        this.server.on('close', (data: WsServerData) => {
-            //console.log('server close', data)
+        this.server.on('server close', (data: WsServerData) => {
+            this.emit('close', data)
         })
 
         this.server.on('message', (data: WsServerData, message: string) => {
@@ -108,6 +108,8 @@ export class WebsocketProxy extends EventEmitter {
             this.server.send(sessionId, event.data)
             this.emit('client message', sessionId, event.data)
         })
+
+        this.emit('client open', clientTarget)
 
         this.clients.set(sessionId, clientTarget)
     }
