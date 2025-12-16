@@ -5,8 +5,9 @@ export class WebsocketClient extends EventEmitter {
   private isConnected: boolean = false;
 
   constructor(
-    private readonly url: string,
-    private readonly protocols?: string | string[]
+    readonly sessionId: string,
+    readonly url: string,
+    readonly protocols?: string | string[]
   ) {
     super();
     this.connect();
@@ -17,8 +18,8 @@ export class WebsocketClient extends EventEmitter {
       this.ws = new WebSocket(this.url, this.protocols);
 
       this.ws.onopen = () => {
-        this.isConnected = true;
-        this.emit("open");
+        this.isConnected = true
+        this.emit("open")
       };
 
       this.ws.onerror = (event) => {
@@ -39,7 +40,7 @@ export class WebsocketClient extends EventEmitter {
     }
   }
 
-  public send(message: string): void {
+  public send(message: string | ArrayBuffer): void {
     if (this.ws?.readyState === WebSocket.OPEN)
       this.ws.send(message);
   }
