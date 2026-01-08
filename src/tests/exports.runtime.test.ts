@@ -9,8 +9,8 @@ test("import from src root exposes classes", async () => {
 
 test("import from src subpath exposes classes", async () => {
   const mod = await import("../websocket/index.js")
-  expect(typeof mod.WebsocketClient).toBe("function")
+  expect(typeof mod.WsClient).toBe("function")
   expect(typeof mod.WsServer).toBe("function")
-  expect(typeof mod.WebsocketProxy).toBe("function")
+  expect(typeof mod.WsProxy).toBe("function")
 })
 

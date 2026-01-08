@@ -83,6 +83,8 @@ export interface ProxyEvents {
     'upstream:connected': (data: { sessionId: string, url: string, protocol?: string | string[] }) => void
     'upstream:disconnected': (data: { sessionId: string, url: string, protocol?: string | string[] }, code: number) => void
     'upstream:message': (context: DownstreamMessageContext) => void
+
+    'message': (context: BaseMessageContext) => void
 }
 
 export type WebsocketProxyProps = {
@@ -130,6 +132,7 @@ export class WsProxy extends EventEmitter {
                 metadata: {},
             }
             this.emit('client:message', ctx)
+            this.emit('message', ctx)
             this.upstreams.get(data.sessionId)?.send(message)
         }).onUpgrade(async (ctx) => {
             if (!await this.onUpgrade(ctx)) throw new Error('Unauthorized')
@@ -165,6 +168,7 @@ export class WsProxy extends EventEmitter {
                         metadata: {},
                     }
                     this.emit('upstream:message', ctx)
+                    this.emit('message', ctx)
                 })
 
             this.upstreams.set(sessionId, upstream)
