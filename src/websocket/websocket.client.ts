@@ -1,6 +1,12 @@
-import { EventEmitter } from "events";
+import { EventEmitter } from "events"
 
-export class WebsocketClient extends EventEmitter {
+export interface WsClientEvents {
+    'open': () => void
+    'message': (message: string | ArrayBuffer) => void
+    'close': (code: number) => void
+}
+
+export class WsClient extends EventEmitter {
   private ws: WebSocket | null = null;
   private isConnected: boolean = false;
 
@@ -15,28 +21,27 @@ export class WebsocketClient extends EventEmitter {
 
   private connect(): void {
     try {
-      this.ws = new WebSocket(this.url, this.protocols);
-
+      this.ws = new WebSocket(this.url, this.protocols)
+      
       this.ws.onopen = () => {
         this.isConnected = true
         this.emit("open")
-      };
+      }
 
       this.ws.onerror = (event) => {
-        this.isConnected = false;
-        //this.emit("error", event);
+        this.isConnected = false
       };
 
-      this.ws.onclose = () => {
+      this.ws.onclose = (event) => {
         this.isConnected = false;
-        this.emit("close");
+        this.emit("close", event.code)
       };
 
       this.ws.onmessage = (event) => {
-        this.emit("message", event)
-      };
+        this.emit("message", event.data)
+      }
+
     } catch (error) {
-      //this.emit("error", error);
     }
   }
 
@@ -56,4 +61,11 @@ export class WebsocketClient extends EventEmitter {
   public get connected(): boolean {
     return this.isConnected;
   }
+
+  public override on<K extends keyof WsClientEvents>(
+          event: K,
+          listener: WsClientEvents[K]
+      ): this {
+          return super.on(event, listener)
+      }
 }

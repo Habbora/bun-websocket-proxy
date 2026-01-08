@@ -1,9 +1,9 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { WebsocketClient } from "../websocket/websocket.client";
+import { WsClient } from "../websocket/websocket.client";
 
 describe("WebsocketClient", () => {
-    const TEST_PORT = 9002;
-    let mockServer: any;
+    const TEST_PORT = 9002
+    let mockServer: any
 
     beforeEach(() => {
         // Create a mock WebSocket server
@@ -29,7 +29,7 @@ describe("WebsocketClient", () => {
     });
 
     test("should connect successfully", async () => {
-        const client = new WebsocketClient(`ws://localhost:${TEST_PORT}`);
+        const client = new WsClient(`ws://localhost:${TEST_PORT}`);
 
         const openPromise = new Promise((resolve) => {
             client.once("open", () => resolve("connected"));
@@ -42,7 +42,7 @@ describe("WebsocketClient", () => {
     });
 
     test("should send and receive messages", async () => {
-        const client = new WebsocketClient(`ws://localhost:${TEST_PORT}`);
+        const client = new WsClient(`ws://localhost:${TEST_PORT}`);
 
         await new Promise((resolve) => {
             client.once("open", resolve);
@@ -60,7 +60,7 @@ describe("WebsocketClient", () => {
     });
 
     test("should support protocols", async () => {
-        const client = new WebsocketClient(`ws://localhost:${TEST_PORT}`, "ocpp1.6");
+        const client = new WsClient(`ws://localhost:${TEST_PORT}`, "ocpp1.6");
 
         const openPromise = new Promise((resolve) => {
             client.once("open", () => resolve("connected"));
@@ -72,7 +72,7 @@ describe("WebsocketClient", () => {
     });
 
     test("should support array of protocols", async () => {
-        const client = new WebsocketClient(`ws://localhost:${TEST_PORT}`, ["ocpp1.6", "ocpp2.0"]);
+        const client = new WsClient(`ws://localhost:${TEST_PORT}`, ["ocpp1.6", "ocpp2.0"]);
 
         const openPromise = new Promise((resolve) => {
             client.once("open", () => resolve("connected"));
@@ -84,7 +84,7 @@ describe("WebsocketClient", () => {
     });
 
     test("should emit close event when connection closes", async () => {
-        const client = new WebsocketClient(`ws://localhost:${TEST_PORT}`);
+        const client = new WsClient(`ws://localhost:${TEST_PORT}`);
 
         await new Promise((resolve) => {
             client.once("open", resolve);
@@ -102,7 +102,7 @@ describe("WebsocketClient", () => {
     });
 
     test("should not send messages when not connected", async () => {
-        const client = new WebsocketClient(`ws://localhost:${TEST_PORT}`);
+        const client = new WsClient(`ws://localhost:${TEST_PORT}`);
 
         await new Promise((resolve) => {
             client.once("open", resolve);
@@ -117,7 +117,7 @@ describe("WebsocketClient", () => {
     });
 
     test("should handle connection to invalid URL", async () => {
-        const client = new WebsocketClient(`ws://localhost:9999`); // Invalid port
+        const client = new WsClient(`ws://localhost:9999`); // Invalid port
 
         const errorPromise = new Promise((resolve) => {
             client.once("close", () => resolve("error"));

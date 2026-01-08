@@ -1,6 +1,7 @@
-import { WebsocketProxy, WebsocketServer } from "./websocket";
+import { WsProxy, WsServer } from "./websocket"
 
-const server = new WebsocketServer({
+// Servidor Teste:
+const server = new WsServer({
     hostname: 'localhost',
     port: 8081,
 })
@@ -9,28 +10,36 @@ server.on('message', (data, message) => {
     server.send(data.sessionId, message)
 })
 
-const proxy = new WebsocketProxy({
-    hostname: 'localhost',
-    port: 8080,
-    observer: 'ws://localhost:8082',
-}).route('/ocpp/cve-pro/:id', 'ws://localhost:8081/ocpp/:id')
+// Proxy
+const proxy = new WsProxy({ hostname: 'localhost', port: 3000, })
+    .route('/ocpp/cve-pro/:id', 'ws://localhost:8081/ocpp/:id')
 
-proxy.onOpenClient((client) => {
-    console.log('open client:', client.url)
+proxy.on('client:connected', (data) => {
+    console.log('client connected:', data.url)
 })
 
-proxy.onCloseClient((client) => {
-    console.log('close client:', client.url)
+proxy.on('client:disconnected', (data) => {
+    console.log('client disconnected:', data.url)
 })
 
-proxy.onOpenConnection((client) => {
-    console.log('open connection:', client.url)
+proxy.on('client:message', (context) => {
+    console.log('client message:', context)
 })
 
-proxy.onCloseConnection((client) => {
-    console.log('close connection:', client.url)
+proxy.on('client:error', (error, data) => {
+    console.log('client error:', error, data)
 })
 
-proxy.onNewMessage(async ({ direction, sessionId, message }) => {
-    console.log('new message', direction, sessionId, message)
+proxy.on('upstream:connected', (client) => {
+    console.log('upstream connected:', client.url)
 })
+
+proxy.on('upstream:disconnected', (client) => {
+    console.log('upstream disconnected:', client.url)
+})
+
+proxy.on('upstream:message', (context) => {
+    console.log('upstream message:', context)
+})
+
+console.log('Proxy server is running on ws://localhost:3000')

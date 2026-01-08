@@ -1,22 +1,33 @@
 import { EventEmitter } from "events";
-import type { WsServerData } from "./websocket";
 
-export type WebSocketServerProps = {
+export type WsServerProps = {
     hostname: string,
     port: number,
     idleTimeout?: number,
+    rootFunction?: (req: Request) => Promise<any | undefined>,
 }
 
-export class WebsocketServer extends EventEmitter {
-    private onUpgradeHandler?: UpgradeHandler
-    private clients: Map<string, Bun.ServerWebSocket<WsServerData>> = new Map();
+export type WsServerData = {
+    sessionId: string;
+    url: string;
+    protocol?: string;
+}
 
-    constructor(props: WebSocketServerProps) {
+export interface WsServerEvents {
+    'open': (data: WsServerData) => void
+    'message': (data: WsServerData, message: string) => void
+    'close': (data: WsServerData, code: number) => void
+}
+
+export class WsServer extends EventEmitter {
+    private clients: Map<string, Bun.ServerWebSocket<WsServerData>> = new Map()
+    private onUpgradeHandler?: UpgradeHandler
+
+    constructor(props: WsServerProps) {
         super()
         Bun.serve({
             hostname: props.hostname,
             port: props.port,
-            idleTimeout: props.idleTimeout || 255,
             fetch: async (req, server) => {
                 if (req.headers.get('upgrade') === 'websocket') {
                     const protocol = req.headers.get('sec-websocket-protocol') || undefined
@@ -29,25 +40,23 @@ export class WebsocketServer extends EventEmitter {
                         return
                     }
                 }
+                if (props.rootFunction) {
+                    const response = await props.rootFunction(req)
+                    return response
+                }
+                return new Response('Not Found', { status: 404 })
             },
             websocket: {
                 open: (ws: Bun.ServerWebSocket<WsServerData>) => {
                     this.clients.set(ws.data.sessionId, ws)
                     this.emit('open', ws.data)
                 },
+                close: (ws: Bun.ServerWebSocket<WsServerData>, code: number) => {
+                    this.clients.delete(ws.data.sessionId)
+                    this.emit('close', ws.data, code)
+                },
                 message: (ws: Bun.ServerWebSocket<WsServerData>, message: string) => {
                     this.emit('message', ws.data, message)
-                },
-                close: (ws: Bun.ServerWebSocket<WsServerData>, code: number, reason: string) => {
-                    this.clients.delete(ws.data.sessionId)
-                    this.emit('close', ws.data, code, reason)
-                },
-                ping: (ws: Bun.ServerWebSocket<WsServerData>, data: Buffer) => {
-                    console.log('server ping:', data.toString())
-                    ws.pong(data)
-                },
-                pong: (ws: Bun.ServerWebSocket<WsServerData>, data: Buffer) => {
-                    console.log('server pong:', data.toString())
                 },
                 idleTimeout: 255,
             },
@@ -65,6 +74,13 @@ export class WebsocketServer extends EventEmitter {
 
     close(sessionId: string) {
         this.clients.get(sessionId)?.close();
+    }
+
+    public override on<K extends keyof WsServerEvents>(
+        event: K,
+        listener: WsServerEvents[K]
+    ): this {
+        return super.on(event, listener)
     }
 }
 

@@ -1,45 +1,173 @@
 import { EventEmitter } from "events"
-import { WebsocketServer, WebsocketClient } from "."
-import type { WebsocketProxyClientHandler, WebsocketProxyMessageHandler, WsServerData } from "./websocket"
+import { WsServer, WsClient, WsServerData } from "."
+import type { WebsocketProxyClientHandler, WebsocketProxyMessageHandler } from "./websocket"
+
+export const MessageDirection = {
+    UPSTREAM: 'upstream',
+    DOWNSTREAM: 'downstream'
+} as const
+
+export type MessageDirection = typeof MessageDirection[keyof typeof MessageDirection]
+
+export type TextMessage = {
+    type: 'text'
+    data: string
+}
+
+export type BinaryMessage = {
+    type: 'binary'
+    data: ArrayBuffer
+}
+
+export type Message = TextMessage | BinaryMessage
+
+export const createMessage = (data: string | ArrayBuffer): Message => {
+    return typeof data === 'string'
+        ? { type: 'text', data }
+        : { type: 'binary', data }
+}
+
+/**
+ * Metadata extensível com tipos conhecidos
+ */
+export type MessageMetadata = {
+    timestamp?: number
+    userId?: string
+    authenticated?: boolean
+    routeParams?: Record<string, string>
+    [key: string]: unknown
+}
+
+/**
+ * Contexto base (não usar diretamente)
+ */
+interface BaseMessageContext<T extends Message = Message> {
+    sessionId: string
+    direction: MessageDirection
+    message: T
+    metadata: MessageMetadata
+}
+
+/**
+ * Contexto upstream (cliente → servidor)
+ */
+export interface UpstreamMessageContext<T extends Message = Message>
+    extends BaseMessageContext<T> {
+    direction: typeof MessageDirection.UPSTREAM
+}
+
+/**
+ * Contexto downstream (servidor → cliente)
+ */
+export interface DownstreamMessageContext<T extends Message = Message>
+    extends BaseMessageContext<T> {
+    direction: typeof MessageDirection.DOWNSTREAM
+}
+
+export type MessageContext<T extends Message = Message> =
+    | UpstreamMessageContext<T>
+    | DownstreamMessageContext<T>
+
+export type NextFunction = () => Promise<void>
+
+export type Middleware<TContext extends MessageContext = MessageContext> = (
+    context: TContext,
+    next: NextFunction
+) => Promise<void> | void
+
+export interface ProxyEvents {
+    'client:connected': (data: WsServerData) => void
+    'client:disconnected': (data: WsServerData, code: number) => void
+    'client:message': (context: UpstreamMessageContext) => void
+
+    'upstream:connected': (data: { sessionId: string, url: string, protocol?: string | string[] }) => void
+    'upstream:disconnected': (data: { sessionId: string, url: string, protocol?: string | string[] }, code: number) => void
+    'upstream:message': (context: DownstreamMessageContext) => void
+}
 
 export type WebsocketProxyProps = {
     hostname: string,
     port: number,
-    observer: string,
+    rootFunction?: (req: Request) => Promise<any | undefined>,
 }
 
-export class WebsocketProxy extends EventEmitter {
-    private server: WebsocketServer
-    private targets = new Map<string, string>()
-    private clients = new Map<string, WebsocketClient>()
-    private observer = new Map<string, WebsocketClient>()
+export type RouteConfig = {
+    pattern: string,
+    target: string,
+    metadata?: Record<string, any>,
+}
 
-    private onOpenClientHandlers: WebsocketProxyClientHandler[] = []
-    private onCloseClientHandlers: WebsocketProxyClientHandler[] = []
-    private onOpenConnectionHandlers: WebsocketProxyClientHandler[] = []
-    private onCloseConnectionHandlers: WebsocketProxyClientHandler[] = []
-    private onNewMessageHandlers: WebsocketProxyMessageHandler[] = []
+export class WsProxy extends EventEmitter {
+    private server!: WsServer
+    private routes = new Map<string, string>()
+    private upstreams = new Map<string, WsClient>()
+    private middlewares: WebsocketProxyClientHandler[] = []
 
     constructor(private readonly props: WebsocketProxyProps) {
-        super();
+        super()
+        this.setupServer()
+    }
 
-        this.server = new WebsocketServer({
+    /**
+     *  Configuração Interna do Servidor WebSocket
+     */
+
+    private async setupServer(): Promise<void> {
+        this.server = new WsServer({
             hostname: this.props.hostname,
             port: this.props.port,
             idleTimeout: 255,
+            rootFunction: this.props.rootFunction,
         }).on('open', async (data) => {
-            await Promise.all(this.onOpenClientHandlers.map(handler => handler(data)))
-        }).on('close', async (data, code, reason) => {
-            await Promise.all(this.onCloseClientHandlers.map(handler => handler(data)))
+            this.emit('client:connected', data)
+        }).on('close', async (data, code) => {
+            this.emit('client:disconnected', data, code)
         }).on("message", async (data: WsServerData, message: string | ArrayBuffer) => {
-            await Promise.all(this.onNewMessageHandlers.map(handler => handler({
-                direction: 'client',
+            const ctx: UpstreamMessageContext = {
                 sessionId: data.sessionId,
-                message,
-            })))
-            this.clients.get(data.sessionId)?.send(message)
+                direction: MessageDirection.UPSTREAM,
+                message: createMessage(message),
+                metadata: {},
+            }
+            this.emit('client:message', ctx)
+            this.upstreams.get(data.sessionId)?.send(message)
         }).onUpgrade(async (ctx) => {
             if (!await this.onUpgrade(ctx)) throw new Error('Unauthorized')
+        })
+    }
+
+    private async createUpstreamConnection({ sessionId, href, protocol, metadata }: {
+        sessionId: string,
+        href: string,
+        protocol: string | string[] | undefined,
+        metadata?: MessageMetadata,
+    }) {
+        return new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(new Error('Connection timeout'))
+            }, 10000)
+            const upstream = new WsClient(sessionId, href, protocol)
+                .on('open', () => {
+                    clearTimeout(timeout)
+                    this.emit('upstream:connected', { sessionId, url: href, protocol })
+                    resolve(upstream)
+                })
+                .on('close', (code) => {
+                    this.upstreams.delete(sessionId)
+                    this.server.close(sessionId)
+                    this.emit('upstream:disconnected', { sessionId, url: href, protocol }, code)
+                })
+                .on('message', async (event) => {
+                    const ctx: DownstreamMessageContext = {
+                        sessionId,
+                        direction: MessageDirection.DOWNSTREAM,
+                        message: createMessage(event),
+                        metadata: {},
+                    }
+                    this.emit('upstream:message', ctx)
+                })
+
+            this.upstreams.set(sessionId, upstream)
         })
     }
 
@@ -59,28 +187,26 @@ export class WebsocketProxy extends EventEmitter {
             const inputUrl = new URL(input)
             const targetUrl = new URL(target)
 
-            const [routePath] = [routeUrl.pathname, routeUrl.search]
-            const [inputPath, inputSearch] = [inputUrl.pathname, inputUrl.search]
-            const [targetPath] = [targetUrl.pathname, targetUrl.search]
+            const routeParts = routeUrl.pathname.split('/').filter(Boolean)
+            const pathParts = inputUrl.pathname.split('/').filter(Boolean)
+            const targetParts = targetUrl.pathname.split('/').filter(Boolean)
 
-            const routeParts = routePath!.split('/').filter(Boolean)
-            const pathParts = inputPath!.split('/').filter(Boolean)
-            const targetParts = targetPath!.split('/').filter(Boolean)
-
-            if (pathParts.length !== routeParts.length)
+            if (pathParts.length !== routeParts.length) {
                 return { match: false }
+            }
 
             const isMatch = routeParts.every((part, index) => part === pathParts[index] || part.startsWith(':'))
             if (!isMatch) return { match: false }
 
             const params: Record<string, string> = {}
-
             routeParts.forEach((part, index) => {
-                if (part.startsWith(':')) params[part] = pathParts[index]!
+                if (part.startsWith(':')) {
+                    params[part] = pathParts[index]!
+                }
             })
 
             const targetParams = targetParts.map(part => params[part] || part)
-            const output = targetUrl.origin + '/' + targetParams.join('/') + inputSearch
+            const output = targetUrl.origin + '/' + targetParams.join('/') + inputUrl.search
 
             return { match: true, output }
         } catch (err) {
@@ -89,104 +215,91 @@ export class WebsocketProxy extends EventEmitter {
         }
     }
 
-    private async createClientProxy({ sessionId, href, protocol }: {
-        sessionId: string,
-        href: string,
-        protocol: string | string[] | undefined,
-    }) {
-        const client = new WebsocketClient(
-            sessionId,
-            href,
-            protocol
-        ).on('open', async () => {
-            await Promise.all(this.onOpenConnectionHandlers.map(handler => handler(client)))
-        }).on('close', async () => {
-            await Promise.all(this.onCloseConnectionHandlers.map(handler => handler(client)))
-            this.server.close(sessionId)
-        }).on('message', async (event: any) => {
-            try {
-                await Promise.all(this.onNewMessageHandlers.map(handler => handler({
-                    direction: 'server',
-                    sessionId,
-                    message: event.data
-                })))
-                this.server.send(sessionId, event.data)
-            } catch {}
-        })
-
-        this.clients.set(sessionId, client)
-    }
-
-    private async createObserverProxy({ sessionId, href, protocol }: {
-        sessionId: string,
-        href: string,
-        protocol: string | string[] | undefined,
-    }) {
-        const observer = new WebsocketClient(
-            sessionId,
-            href,
-            protocol
-        ).on('open', async () => {
-        }).on('close', async () => {
-        }).on('message', async (event: any) => {
-        })
-
-        this.observer.set(sessionId, observer)
-    }
-
-    private async onUpgrade(data: WsServerData) {
-        const target = Array.from(this.targets.keys()).find((route) => {
+    /**
+     * Find a route that matches the input url
+     * @param url       wss://habbora.com.br/ws/123
+     * @returns         /ws/:id
+     */
+    private findRoute(url: string): string | undefined {
+        return Array.from(this.routes.keys()).find((route) => {
             const routeUrl = new URL(route, 'http://localhost')
-            const inputUrl = new URL(data.url)
+            const inputUrl = new URL(url)
             const routeParts = routeUrl.pathname!.split('/').filter(Boolean)
             const pathParts = inputUrl.pathname!.split('/').filter(Boolean)
             if (pathParts.length !== routeParts.length) return
             if (routeParts.every((part, index) => part === pathParts[index] || part.startsWith(':'))) return true
         })
-        if (!target) return
-        const { output } = WebsocketProxy.matchRouter({ route: target, input: data.url, target: this.targets.get(target)! })
-        if (!output) return
-        this.createClientProxy({ sessionId: data.sessionId, href: output!, protocol: data.protocol })
-        return true
     }
 
-    public onOpenClient(handler: WebsocketProxyClientHandler) {
-        this.onOpenClientHandlers.push(handler)
-    }
+    private async onUpgrade(data: WsServerData): Promise<boolean> {
+        const route = this.findRoute(data.url)
+        if (!route) return false
 
-    public onCloseClient(handler: WebsocketProxyClientHandler) {
-        this.onCloseClientHandlers.push(handler)
-    }
+        const { output } = WsProxy.matchRouter({
+            route,
+            input: data.url,
+            target: this.routes.get(route)!
+        })
 
-    public onOpenConnection(handler: WebsocketProxyClientHandler) {
-        this.onOpenConnectionHandlers.push(handler)
-    }
+        if (!output) return false
 
-    public onCloseConnection(handler: WebsocketProxyClientHandler) {
-        this.onCloseConnectionHandlers.push(handler)
-    }
-
-    public onNewMessage(handler: WebsocketProxyMessageHandler) {
-        this.onNewMessageHandlers.push(handler)
+        try {
+            await this.createUpstreamConnection({
+                sessionId: data.sessionId,
+                href: output!,
+                protocol: data.protocol
+            })
+            return true
+        } catch (error) {
+            console.error('[Proxy] Failed to create upstream connection:', error)
+            return false
+        }
     }
 
     /**
+     * Add a new route to the proxy
      * @param route     /intelbras'
      * @param target    ws://localhost:8081/ocpp/
      * @returns         WebsocketProxy
      */
     public route(route: string, target: string): this {
-        this.targets.set(route, target)
+        this.routes.set(route, target)
         return this
     }
 
     /**
+     * Remove a route from the proxy
      * @param route     /intelbras'
      * @returns         WebsocketProxy
      */
     public unroute(route: string): this {
-        this.targets.delete(route)
+        this.routes.delete(route)
         return this
+    }
+
+    /**
+     * Override the on method to add type checking
+     */
+
+    public override on<K extends keyof ProxyEvents>(
+        event: K,
+        listener: ProxyEvents[K]
+    ): this {
+        return super.on(event, listener)
+    }
+
+    public override once<K extends keyof ProxyEvents>(
+        event: K,
+        listener: ProxyEvents[K]
+    ): this {
+        return super.once(event, listener)
+    }
+
+    public override emit<K extends keyof ProxyEvents>(
+        event: K,
+        ...args: Parameters<ProxyEvents[K]>
+    ): boolean {
+        return super.emit(event, ...args)
     }
 }
 
